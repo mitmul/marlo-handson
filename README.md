@@ -77,18 +77,25 @@ Please do not care some slight differences. All you need is the `publicIpAddress
 ### 5. SSH to the VM
 
 ```
+$ ssh ${USER}.eastus.cloudapp.azure.com
+```
+
+or
+
+```
 $ ssh [IP OF THE VM]
 ```
-Please replace `[IP OF THE VM]` with your IP address you can find in the result of the previous step.
+If you choose the latter way, please replace `[IP OF THE VM]` with your IP address you can find in the result of the previous step.
 
 ### 6. Create a Conda environment for MarLo
 
 On the VM,
 ```
-$ curl -s -L https://nvidia.github.io/nvidia-docker/gpgkey | sudo apt-key add -
-$ distribution=$(. /etc/os-release;echo $ID$VERSION_ID)
-$ curl -s -L https://nvidia.github.io/nvidia-docker/$distribution/nvidia-docker.list | sudo tee /etc/apt/sources.list.d/nvidia-docker.list
-$ sudo apt-get update
+$ curl -s -L https://nvidia.github.io/nvidia-docker/gpgkey | sudo apt-key add - \
+&& distribution=$(. /etc/os-release;echo $ID$VERSION_ID) \
+&& curl -s -L https://nvidia.github.io/nvidia-docker/$distribution/nvidia-docker.list | sudo tee /etc/apt/sources.list.d/nvidia-docker.list \
+&& sudo apt-get update \
+&& sudo apt-get install -y libopenal-dev
 ```
 
 ```
@@ -97,7 +104,7 @@ $ conda create python=3.6 --name marlo \
 && conda activate marlo \
 && conda install -c crowdai malmo matplotlib ipython numpy scipy \
 && pip install git+https://github.com/crowdAI/marLo.git \
-&& pip install chainer==5.0.0 cupy-cuda92==5.0.0 chainerrl==0.4.0
+&& pip install chainer==5.0.0 cupy-cuda92==5.0.0 chainerrl==0.5.0
 ```
 
 ### 7. Install X2Go client
@@ -115,3 +122,5 @@ In the X2Go window, launch a Terminal Emulater from the left top "Applications" 
 $ source activate marlo \
 && $MALMO_MINECRAFT_ROOT/launchClient.sh -port 10000
 ```
+
+This may cause a crash for the first time.
