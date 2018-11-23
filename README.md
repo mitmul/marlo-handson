@@ -100,14 +100,20 @@ $ curl -s -L https://nvidia.github.io/nvidia-docker/gpgkey | sudo apt-key add - 
 
 ```
 $ conda create python=3.6 --name marlo \
+&& conda config --set always_yes yes \
 && conda config --add channels conda-forge \
 && conda activate marlo \
-&& conda install -c crowdai malmo matplotlib ipython numpy scipy \
+&& conda install -c crowdai malmo matplotlib ipython numpy scipy opencv \
 && pip install git+https://github.com/crowdAI/marLo.git \
 && pip install chainer==5.0.0 cupy-cuda92==5.0.0 chainerrl==0.5.0
 ```
 
-### 7. Install X2Go client
+```
+$ mkdir /anaconda/envs/marlo/Minecraft/run/config \
+&& echo 'enabled=false' > /anaconda/envs/marlo/Minecraft/run/config/splash.properties
+```
+
+### 7. Install X2Go client on your machine
 
 Just follow the instruction here: [Installing the Qt-based X2Go Client](https://wiki.x2go.org/doku.php/doc:installation:x2goclient). Please note that you only needs the "client". You do not have to setup the X2Go server on the VM. It has already been ready to go!
 
@@ -123,4 +129,6 @@ $ source activate marlo \
 && $MALMO_MINECRAFT_ROOT/launchClient.sh -port 10000
 ```
 
-This may cause a crash for the first time.
+Then you can see this screen on the X2Go client window.
+
+![](images/minecraft.png)
