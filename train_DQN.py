@@ -43,23 +43,22 @@ def main():
     parser.add_argument('--demo', action='store_true', default=False)
     parser.add_argument('--load', type=str, default=None)
     parser.add_argument('--final-exploration-frames',
-                        type=int, default=10 ** 6,
+                        type=int, default=10 ** 5,
                         help='Timesteps after which we stop ' +
                         'annealing exploration rate')
     parser.add_argument('--final-epsilon', type=float, default=0.1,
                         help='Final value of epsilon during training.')
     parser.add_argument('--eval-epsilon', type=float, default=0.05,
                         help='Exploration epsilon used during eval episodes.')
-    parser.add_argument('--noisy-net-sigma', type=float, default=None)
     parser.add_argument('--arch', type=str, default='doubledqn',
                         choices=['nature', 'nips', 'dueling', 'doubledqn'],
                         help='Network architecture to use.')
-    parser.add_argument('--steps', type=int, default=5 * 10 ** 7,
+    parser.add_argument('--steps', type=int, default=10 ** 6,
                         help='Total number of timesteps to train the agent.')
     parser.add_argument('--max-episode-len', type=int,
                         default=30 * 60 * 60 // 4,  # 30 minutes with 60/4 fps
                         help='Maximum number of timesteps for each episode.')
-    parser.add_argument('--replay-start-size', type=int, default=5 * 10 ** 4,
+    parser.add_argument('--replay-start-size', type=int, default=1000,
                         help='Minimum replay buffer size before ' +
                         'performing gradient updates.')
     parser.add_argument('--target-update-interval',
@@ -70,11 +69,7 @@ def main():
                         help='Frequency (in timesteps) of evaluation phase.')
     parser.add_argument('--update-interval', type=int, default=4,
                         help='Frequency (in timesteps) of network updates.')
-    parser.add_argument('--eval-n-runs', type=int, default=10)
-    parser.add_argument('--no-clip-delta',
-                        dest='clip_delta', action='store_false')
-    parser.set_defaults(clip_delta=True)
-
+    parser.add_argument('--eval-n-runs', type=int, default=100)
     parser.add_argument('--logging-level', type=int, default=20,
                         help='Logging level. 10:DEBUG, 20:INFO etc.')
     parser.add_argument('--render', action='store_true', default=False,
@@ -89,23 +84,13 @@ def main():
     # Set a random seed used in ChainerRL.
     misc.set_random_seed(args.seed, gpus=(args.gpu,))
 
-    # Set different random seeds for train and test envs.
-    train_seed = args.seed
-    test_seed = 2 ** 31 - 1 - args.seed
-
     if not os.path.exists(args.out_dir):
         os.makedirs(args.out_dir)
-    out_dir_logs = args.out_dir + '/logging'
-    if not os.path.exists(out_dir_logs):
-        os.makedirs(out_dir_logs)
 
     experiments.set_log_base_dir(args.out_dir)
     print('Output files are saved in {}'.format(args.out_dir))
 
-    def make_env(test):
-        # Use different random seeds for train and test envs
-        env_seed = test_seed if test else train_seed
-
+    def make_env(render=False, env_seed=0):
         join_tokens = marlo.make(
             "MarLo-FindTheGoal-v0",
             params=dict(
@@ -116,33 +101,26 @@ def main():
         env = marlo.init(join_tokens[0])
 
         obs = env.reset()
-        env.render(mode="rgb_array")
+        if render:
+            env.render(mode="rgb_array")
         action = env.action_space.sample()
         obs, r, done, info = env.step(action)
         env.seed(int(env_seed))
-        if test:
-            # Randomize actions like epsilon-greedy in evaluation as well
-            env = chainerrl.wrappers.RandomizeAction(env, args.eval_epsilon)
         return env
 
-    env = make_env(test=False)
-    eval_env = make_env(test=True)
+    env = make_env(render=args.render, env_seed=args.seed)
 
     n_actions = env.action_space.n
     q_func = links.Sequence(
-        links.NatureDQNHead(),
+        links.NatureDQNHead(n_input_channels=3),
         L.Linear(512, n_actions),
-        DiscreteActionValue)
-
-    if args.noisy_net_sigma is not None:
-        links.to_factorized_noisy(q_func)
-        # Turn off explorer
-        explorer = explorers.Greedy()
+        DiscreteActionValue
+    )
 
     # Draw the computational graph and save it in the output directory.
     chainerrl.misc.draw_computational_graph(
-        [q_func(np.zeros((4, 84, 84), dtype=np.float32)[None])],
-        os.path.join(args.outdir, 'model'))
+        [q_func(np.zeros((3, 84, 84), dtype=np.float32)[None])],
+        os.path.join(args.out_dir, 'model'))
 
     # Use the same hyper parameters as the Nature paper's
     opt = optimizers.RMSpropGraves(
@@ -159,23 +137,27 @@ def main():
 
     def phi(x):
         # Feature extractor
+        x = x.transpose(2, 0, 1)
         return np.asarray(x, dtype=np.float32) / 255
 
-    Agent = agents.DQN
-    agent = Agent(q_func, opt, rbuf, gpu=args.gpu, gamma=0.99,
-                  explorer=explorer, replay_start_size=args.replay_start_size,
-                  target_update_interval=args.target_update_interval,
-                  clip_delta=args.clip_delta,
-                  update_interval=args.update_interval,
-                  batch_accumulator='sum',
-                  phi=phi)
+    agent = agents.DQN(
+        q_func, opt, rbuf,
+        gpu=args.gpu,
+        gamma=0.99,
+        explorer=explorer,
+        replay_start_size=args.replay_start_size,
+        target_update_interval=args.target_update_interval,
+        update_interval=args.update_interval,
+        batch_accumulator='sum',
+        phi=phi
+    )
 
     if args.load:
         agent.load(args.load)
 
     if args.demo:
         eval_stats = experiments.eval_performance(
-            env=eval_env,
+            env=env,
             agent=agent,
             n_runs=args.eval_n_runs)
         print('n_runs: {} mean: {} median: {} stdev {}'.format(
@@ -183,12 +165,15 @@ def main():
             eval_stats['stdev']))
     else:
         experiments.train_agent_with_evaluation(
-            agent=agent, env=env, steps=args.steps,
-            eval_n_runs=args.eval_n_runs, eval_interval=args.eval_interval,
+            agent=agent,
+            env=env,
+            steps=args.steps,
+            eval_n_runs=args.eval_n_runs,
+            eval_interval=args.eval_interval,
             outdir=args.out_dir,
             save_best_so_far_agent=False,
             max_episode_len=args.max_episode_len,
-            eval_env=eval_env,
+            eval_env=env,
         )
 
 
