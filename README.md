@@ -99,8 +99,8 @@ $ curl -s -L https://nvidia.github.io/nvidia-docker/gpgkey | sudo apt-key add - 
 ```
 
 ```
-$ conda create python=3.6 --name marlo \
-&& conda config --set always_yes yes \
+$ conda config --set always_yes yes \
+&& conda create python=3.6 --name marlo \
 && conda config --add channels conda-forge \
 && conda activate marlo \
 && conda install -c crowdai malmo matplotlib ipython numpy scipy opencv \
